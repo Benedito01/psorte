@@ -4,186 +4,226 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Despesas</title>
+  <title>Relatório</title>
   <style>
-    * { box-sizing: border-box; font-family: Arial, sans-serif; }
-    body { padding: 20px; background: #f5f5f5; }
-    h2, h3 { text-align: center; }
-    table { width: 100%; border-collapse: collapse; margin-top: 15px; background: white; }
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f9f9f9; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .clock { font-weight: bold; }
+    h2, h3 { text-align: center; margin-top: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; }
     th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
-    th { background-color: #f0f0f0; }
-    .totais { margin-top: 15px; font-weight: bold; text-align: center; }
-    input[type="text"], input[type="number"], input[type="date"] {
-      padding: 6px; margin: 4px; width: 200px;
-    }
+    th { background: #eee; }
+    hr { margin: 20px 0; }
     button {
-      padding: 8px 15px;
+      display: block;
+      margin: 30px auto;
+      padding: 10px 20px;
       background-color: #2196f3;
       color: white;
       border: none;
       border-radius: 5px;
       cursor: pointer;
-      margin: 5px;
     }
     button:hover { background-color: #0b7dda; }
-    .center { text-align: center; }
+    .totais { text-align: center; font-weight: bold; margin-top: 15px; }
   </style>
 </head>
 <body>
 
-  <h2>DESPESAS</h2>
-
-  <div class="totais">
-    TOTAL DAS DESPESAS: <span id="totalDespesas">R$ 0,00</span>
+  <div class="header">
+    <div>Usuário logado: <strong id="usuarioLogado">---</strong></div>
+    <div class="clock" id="relogio"></div>
   </div>
 
   <hr>
+  <h2>RELATÓRIO DE VENDAS</h2>
+  <hr>
 
-  <div class="center">
-    <input type="number" id="valor" placeholder="Valor da despesa" />
-    <input type="date" id="data" />
-    <input type="text" id="descricao" placeholder="Descrição" />
-    <br/>
-    <button onclick="salvarDespesa()">Salvar</button>
-    <button onclick="editarDespesa()">Editar</button>
-    <button onclick="excluirDespesa()">Excluir</button>
+  <table id="tabelaVendas">
+    <thead>
+      <tr>
+        <th>Nome</th>
+        <th>Bloco</th>
+        <th>Data</th>
+        <th>Recebeu</th>
+        <th>Devolveu</th>
+        <th>Vendeu</th>
+        <th>Apurou</th>
+        <th>Pagou</th>
+        <th>Deve</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div class="totais">
+    TOTAL APURADO: <span id="totalApurado">R$ 0,00</span>
   </div>
 
+  <hr>
+  <h3>RELATÓRIO DE DESPESAS</h3>
   <hr>
 
   <table id="tabelaDespesas">
     <thead>
       <tr>
-        <th>#</th>
         <th>Data</th>
         <th>Valor</th>
         <th>Descrição</th>
       </tr>
     </thead>
     <tbody></tbody>
-    <tfoot>
-      <tr>
-        <td colspan="2"><strong>Total</strong></td>
-        <td colspan="2" id="somaRodape">R$ 0,00</td>
-      </tr>
-    </tfoot>
   </table>
 
-  <div class="center">
-    <button onclick="gerarPDF()">Gerar PDF</button>
-    <button onclick="window.location.href='caixa.html'">Voltar ao Caixa</button>
+  <div class="totais">
+    TOTAL DAS DESPESAS: <span id="totalDespesas">R$ 0,00</span>
   </div>
 
+  <hr>
+  <div class="totais">
+    TOTAL DAS RECEITAS: <span id="totalReceitas">R$ 0,00</span><br>
+    TOTAL DAS DESPESAS: <span id="totalGastos">R$ 0,00</span><br>
+    TOTAL FINAL: <span id="totalFinal">R$ 0,00</span>
+  </div>
+
+  <button onclick="exportarPDF()">Exportar Relatório em PDF</button>
+
+  <!-- jsPDF + AutoTable -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+
   <script>
     const { jsPDF } = window.jspdf;
-    let despesas = JSON.parse(localStorage.getItem("despesas") || "[]");
-    let indiceSelecionado = null;
 
-    function atualizarTabela() {
-      const tbody = document.querySelector("#tabelaDespesas tbody");
-      tbody.innerHTML = "";
-      let total = 0;
+    document.getElementById("usuarioLogado").textContent = localStorage.getItem("usuarioLogado") || "Desconhecido";
 
-      despesas.forEach((d, i) => {
+    function atualizarRelogio() {
+      const agora = new Date();
+      document.getElementById('relogio').textContent = agora.toLocaleDateString() + ' ' + agora.toLocaleTimeString();
+    }
+    setInterval(atualizarRelogio, 1000);
+    atualizarRelogio();
+
+    const vendedores = JSON.parse(localStorage.getItem("vendedores") || "[]");
+    const vendas = JSON.parse(localStorage.getItem("vendas") || "{}");
+    const despesas = JSON.parse(localStorage.getItem("despesas") || "[]");
+    const blocos = JSON.parse(localStorage.getItem("blocos") || "{}");
+
+    const tbodyVendas = document.querySelector("#tabelaVendas tbody");
+    let totalApurado = 0;
+
+    vendedores.forEach(v => {
+      const listaVendas = vendas[v.nome] || [];
+      const bloco = blocos[v.nome] || "—";
+      listaVendas.forEach(venda => {
+        const vendeu = venda.recebeu - venda.devolveu;
+        const apurou = vendeu * v.cotacao;
+        const pagou = venda.pagou || 0;
+        const deve = apurou - pagou;
+        totalApurado += apurou;
+
         const tr = document.createElement("tr");
-        tr.onclick = () => selecionarDespesa(i);
         tr.innerHTML = `
-          <td>${i + 1}</td>
-          <td>${d.data}</td>
-          <td>R$ ${parseFloat(d.valor).toFixed(2)}</td>
-          <td>${d.descricao}</td>
+          <td>${v.nome}</td>
+          <td>${bloco}</td>
+          <td>${venda.data}</td>
+          <td>${venda.recebeu}</td>
+          <td>${venda.devolveu}</td>
+          <td>${vendeu}</td>
+          <td>R$ ${apurou.toFixed(2)}</td>
+          <td>R$ ${pagou.toFixed(2)}</td>
+          <td>R$ ${deve.toFixed(2)}</td>
         `;
-        tbody.appendChild(tr);
-        total += parseFloat(d.valor);
+        tbodyVendas.appendChild(tr);
+      });
+    });
+
+    document.getElementById("totalApurado").textContent = `R$ ${totalApurado.toFixed(2)}`;
+    document.getElementById("totalReceitas").textContent = `R$ ${totalApurado.toFixed(2)}`;
+
+    const tbodyDespesas = document.querySelector("#tabelaDespesas tbody");
+    let totalDespesas = 0;
+
+    despesas.forEach(d => {
+      const valor = parseFloat(d.valor || 0);
+      totalDespesas += valor;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${d.data}</td>
+        <td>R$ ${valor.toFixed(2)}</td>
+        <td>${d.descricao}</td>
+      `;
+      tbodyDespesas.appendChild(tr);
+    });
+
+    document.getElementById("totalDespesas").textContent = `R$ ${totalDespesas.toFixed(2)}`;
+    document.getElementById("totalGastos").textContent = `R$ ${totalDespesas.toFixed(2)}`;
+    document.getElementById("totalFinal").textContent = `R$ ${(totalApurado - totalDespesas).toFixed(2)}`;
+
+    function exportarPDF() {
+      const doc = new jsPDF();
+      doc.setFontSize(12);
+      doc.text("RELATÓRIO DE VENDAS", 75, 10);
+      doc.text(`Usuário: ${localStorage.getItem("usuarioLogado") || ""}`, 10, 20);
+      doc.text(`Data: ${new Date().toLocaleString()}`, 10, 30);
+
+      const vendasData = [];
+      vendedores.forEach(v => {
+        const listaVendas = vendas[v.nome] || [];
+        const bloco = blocos[v.nome] || "—";
+        listaVendas.forEach(venda => {
+          const vendeu = venda.recebeu - venda.devolveu;
+          const apurou = vendeu * v.cotacao;
+          const pagou = venda.pagou || 0;
+          const deve = apurou - pagou;
+          vendasData.push([
+            v.nome,
+            bloco,
+            venda.data,
+            venda.recebeu,
+            venda.devolveu,
+            vendeu,
+            `R$ ${apurou.toFixed(2)}`,
+            `R$ ${pagou.toFixed(2)}`,
+            `R$ ${deve.toFixed(2)}`
+          ]);
+        });
       });
 
-      document.getElementById("totalDespesas").textContent = `R$ ${total.toFixed(2)}`;
-      document.getElementById("somaRodape").textContent = `R$ ${total.toFixed(2)}`;
-      localStorage.setItem("despesas", JSON.stringify(despesas));
-    }
+      doc.autoTable({
+        head: [["Nome", "Bloco", "Data", "Recebeu", "Devolveu", "Vendeu", "Apurou", "Pagou", "Deve"]],
+        body: vendasData,
+        startY: 40
+      });
 
-    function salvarDespesa() {
-      const valor = parseFloat(document.getElementById("valor").value);
-      const data = document.getElementById("data").value;
-      const descricao = document.getElementById("descricao").value;
+      let y = doc.lastAutoTable.finalY + 10;
+      doc.text(`TOTAL APURADO: R$ ${totalApurado.toFixed(2)}`, 10, y);
+      y += 10;
 
-      if (!valor || !data || !descricao) {
-        alert("Preencha todos os campos.");
-        return;
-      }
+      doc.text("RELATÓRIO DE DESPESAS", 75, y);
+      y += 10;
 
-      despesas.push({ valor, data, descricao });
-      limparCampos();
-      atualizarTabela();
-    }
-
-    function selecionarDespesa(index) {
-      const despesa = despesas[index];
-      indiceSelecionado = index;
-      document.getElementById("valor").value = despesa.valor;
-      document.getElementById("data").value = despesa.data;
-      document.getElementById("descricao").value = despesa.descricao;
-    }
-
-    function editarDespesa() {
-      if (indiceSelecionado === null) {
-        alert("Selecione uma despesa para editar.");
-        return;
-      }
-      const valor = parseFloat(document.getElementById("valor").value);
-      const data = document.getElementById("data").value;
-      const descricao = document.getElementById("descricao").value;
-
-      despesas[indiceSelecionado] = { valor, data, descricao };
-      limparCampos();
-      atualizarTabela();
-      indiceSelecionado = null;
-    }
-
-    function excluirDespesa() {
-      if (indiceSelecionado === null) {
-        alert("Selecione uma despesa para excluir.");
-        return;
-      }
-      despesas.splice(indiceSelecionado, 1);
-      limparCampos();
-      atualizarTabela();
-      indiceSelecionado = null;
-    }
-
-    function limparCampos() {
-      document.getElementById("valor").value = "";
-      document.getElementById("data").value = "";
-      document.getElementById("descricao").value = "";
-    }
-
-    function gerarPDF() {
-      const doc = new jsPDF();
-      doc.setFontSize(14);
-      doc.text("RELATÓRIO DE DESPESAS", 70, 15);
-      doc.setFontSize(10);
-      doc.text(`Data: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 10, 25);
-
-      const body = despesas.map((d, i) => [
-        i + 1,
+      const despesasData = despesas.map(d => [
         d.data,
-        `R$ ${parseFloat(d.valor).toFixed(2)}`,
+        `R$ ${parseFloat(d.valor || 0).toFixed(2)}`,
         d.descricao
       ]);
 
       doc.autoTable({
-        startY: 30,
-        head: [["#", "Data", "Valor", "Descrição"]],
-        body: body,
-        theme: 'grid'
+        head: [["Data", "Valor", "Descrição"]],
+        body: despesasData,
+        startY: y
       });
 
-      doc.save("relatorio_despesas.pdf");
-    }
+      y = doc.lastAutoTable.finalY + 10;
+      doc.text(`TOTAL DAS RECEITAS: R$ ${totalApurado.toFixed(2)}`, 10, y);
+      y += 7;
+      doc.text(`TOTAL DAS DESPESAS: R$ ${totalDespesas.toFixed(2)}`, 10, y);
+      y += 7;
+      doc.text(`TOTAL FINAL: R$ ${(totalApurado - totalDespesas).toFixed(2)}`, 10, y);
 
-    atualizarTabela();
+      doc.save("relatorio_completo.pdf");
+    }
   </script>
 </body>
 </html>
